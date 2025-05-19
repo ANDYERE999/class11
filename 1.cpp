@@ -7,9 +7,9 @@ using namespace std;
 class Solution{
     public:
         int networkDelayTime(vector<vector<int>> &times,int N,int K){
-            // Add validation for N and K
+            // 验证N和K
             if (N <= 0 || K <= 0 || K > N) {
-                return -1; // Invalid N or K, cannot proceed
+                return -1; // 无效的N或K，无法继续
             }
 
             class Link{
@@ -17,12 +17,10 @@ class Solution{
                 int target;
                 int distance;
                 int diatanceHaveReached;
-                //bool canGo;
                 Link(int target,int distance){
                     this->target=target;
                     this->distance=distance;
                     this->diatanceHaveReached=0;
-                    //this->canGo=false;
                 }
                 void updateByGameTick(int &index){
                     if (diatanceHaveReached>=distance){
@@ -31,7 +29,6 @@ class Solution{
                         index=-1;
                     }
                 }
-
             };
             
             class Node{
@@ -54,13 +51,6 @@ class Solution{
                         }
                     }
                 }
-                bool isIsolated(){
-                    if (links.size()==0){
-                        return true;
-                    }else{
-                        return false;
-                    }
-                }
             };
 
             class network{
@@ -70,30 +60,23 @@ class Solution{
 
                 network(vector<vector<int>> &times,int N,int K){
                     //创建节点
-                    // N is now guaranteed to be > 0 by the check above.
-                    // K is now guaranteed to be within [1, N].
                     for(int i=1;i<=N;i++){
                         Node * newNode = new Node(i);
                         nodes.push_back(newNode);
                     }
 
-                    // 连接线路
+                    // 连接线路 - 注意：只创建单向连接，保持有向图特性
                     for (int i=0;i<times.size();i++){
-                        // Assuming times[i][0] and times[i][1] are within [1,N] as per typical problem constraints.
-                        // If not, further checks would be needed here for times[i][0]-1 and times[i][1]-1.
-                        // However, the primary reported error is likely due to N or K.
-                        if (times[i][0] < 1 || times[i][0] > N || times[i][1] < 1 || times[i][1] > N) {
-                            // Optional: Handle or log invalid edge data if problem doesn't guarantee valid node IDs in times.
-                            // For now, we assume valid 'times' if N, K are valid.
-                            // If an error here should stop processing, this constructor would need to signal failure.
-                            // This might be too complex for current structure, focusing on N, K fix.
-                        }
-                        this->nodes[times[i][0]-1]->setUpLink(times[i][1]-1,times[i][2]);
-                        this->nodes[times[i][1]-1]->setUpLink(times[i][0]-1,times[i][2]);
+                        // times[i][0]是源节点，times[i][1]是目标节点，times[i][2]是延迟时间
+                        int source = times[i][0]-1;
+                        int target = times[i][1]-1;
+                        int delay = times[i][2];
+                        
+                        this->nodes[source]->setUpLink(target, delay);
+                        // 删除创建反向连接的代码
                     }
 
                     // 确定初始节点
-                    // K-1 is now a guaranteed valid index because 1 <= K <= N.
                     this->startPoint=nodes[K-1];
                 }
 
@@ -106,41 +89,70 @@ class Solution{
                     return true;
                 }
 
-                int startGame(){// 返回传播所需时间
-                    // 判断是否存在孤立节点
-                    for (int i=0;i<nodes.size();i++){
-                        if (nodes[i]->isIsolated()==true){
-                            return -1;
-                        }
-                    }
-
-                    int time=-1;
-                    this->startPoint->reached=true;
-                    while (true){
-                        if (this->isAllReached()==true){
-                            return time;
-                        }
-
-                        time++;
-
+                int startGame(){
+                    // 首先检查是否所有节点都可以从起点到达
+                    // 这不能简单通过检查孤立节点来判断，需要运行算法然后检查是否所有节点都被到达
+                    
+                    int time = 0; // 从0开始计时更合理
+                    this->startPoint->reached = true;
+                    
+                    // 设置最大迭代次数以避免无限循环
+                    const int MAX_ITERATIONS = 10000;
+                    int iterations = 0;
+                    
+                    while (!this->isAllReached() && iterations < MAX_ITERATIONS){
+                        iterations++;
+                        
+                        // 存储本轮新到达的节点
+                        vector<int> newly_reached;
+                        
                         // 更新所有节点的到达状态
                         for(int i=0;i<this->nodes.size();i++){
-                            for (int j=0;j<this->nodes[i]->links.size();j++){
-                                int x;
-                                this->nodes[i]->links[j]->updateByGameTick(x);
-                                if (x!=-1){
-                                    this->nodes[x]->reached=true;
-                                    //cout<<"[Debug]Node "<<x+1<<" been reached when time is "<<time<<endl;
+                            if (this->nodes[i]->reached) {
+                                for (int j=0;j<this->nodes[i]->links.size();j++){
+                                    int x;
+                                    this->nodes[i]->links[j]->updateByGameTick(x);
+                                    if (x!=-1){
+                                        newly_reached.push_back(x);
+                                    }
                                 }
                             }
                         }
+                        
+                        // 标记这一轮新到达的节点
+                        for (int idx : newly_reached) {
+                            this->nodes[idx]->reached = true;
+                        }
 
-                        // 传播
+                        // 传播 - 更新所有节点的链接距离
                         for(int i=0;i<this->nodes.size();i++){
                             nodes[i]->updateByGameTick();
                         }
+                        
+                        time++; // 每完成一轮更新，时间+1
+                        
+                        // 如果这一轮没有新节点被到达且仍有未到达的节点，说明存在无法到达的节点
+                        if (newly_reached.empty() && !this->isAllReached()) {
+                            return -1;
+                        }
                     }
-
+                    
+                    // 检查是否因为达到最大迭代次数而退出
+                    if (iterations >= MAX_ITERATIONS && !this->isAllReached()) {
+                        return -1;
+                    }
+                    
+                    return this->isAllReached() ? time : -1;
+                }
+                
+                ~network() {
+                    // 清理内存
+                    for (auto node : nodes) {
+                        for (auto link : node->links) {
+                            delete link;
+                        }
+                        delete node;
+                    }
                 }
             };
 
@@ -150,30 +162,27 @@ class Solution{
 };
 
 int main(){
+    freopen("in.txt","r",stdin);
     int N,K;
     cin>>N;
     cin>>K;
-    cin.ignore(); // Consume the newline character after reading K
+    cin.ignore(); // 消耗换行符
 
     vector<vector<int>> times;
     string line;
     while(getline(cin,line)){
-        if (line.empty()) { // Stop if an empty line is read
+        if (line.empty()) { // 如果读到空行则停止
             break;
         }
         stringstream ss(line);
         vector<int> row_vector;
         int u, v, w;
-        if (ss >> u && ss >> v && ss >> w) { // Try to read three integers
+        if (ss >> u && ss >> v && ss >> w) { // 尝试读取三个整数
             row_vector.push_back(u);
             row_vector.push_back(v);
             row_vector.push_back(w);
             times.push_back(row_vector);
         } else {
-            // Optional: Handle malformed lines or break if strict input is expected
-            // For now, we simply stop processing further lines if a line is not in the expected format.
-            // If the problem statement guarantees valid input format (except for the end),
-            // this else block might not be strictly necessary, or could be used for error logging.
             break; 
         }
     }
